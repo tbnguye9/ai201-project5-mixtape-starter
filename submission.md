@@ -159,19 +159,58 @@ specific Sunday case it was meant to address.
 
 **How I reproduced it:**
 
-TODO — fill in after running the `flask shell` steps for feed_service.
+I queried `get_friends_listening_now()` directly in `flask shell` for
+each seeded user as viewer, and computed the actual age of each returned
+event. For example, viewing as `kenji`, the feed included `nova` with an
+event 3.6 hours old. Since "Listening Now" implies the friend is
+currently listening, an event several hours old being shown as "now" is
+the reported bug. I confirmed this wasn't a one-off by checking multiple
+viewers (`darius`, `simone`, `aaliya`) — all consistently showed friends
+with events 1.8–3.6 hours old as "listening now."
 
 **How I found the root cause:**
 
-TODO
+I first suspected a timezone/string-comparison issue between the naive
+datetimes stored in SQLite and the timezone-aware `cutoff` value used in
+the filter, since SQLite stores datetimes as text and compares them as
+strings. I compiled the actual SQL query with literal binds and found
+the stored values and the `cutoff` value did have different string
+formats (the cutoff included a `+00:00` suffix, stored rows did not).
+However, testing this directly — including edge cases at 23:59 and
+24:01 hours — showed the filter behaved correctly regardless, so the
+format mismatch was a red herring and not the actual cause.
+
+Re-reading `seed_data.py`, a comment on the older listening events read
+"should NOT appear in 'listening now' after fix" — which pointed me back
+to `RECENT_THRESHOLD` itself rather than the comparison logic. I
+confirmed this by temporarily overriding `RECENT_THRESHOLD` to 30 minutes
+in the shell and re-querying: friends with events older than 30 minutes
+(like `nova` at 3.6h) disappeared from the results, confirming the
+constant's value — not the filtering logic — was the problem.
 
 **The root cause:**
 
-TODO
+`RECENT_THRESHOLD = timedelta(hours=24)` in `feed_service.py` is far too
+wide a window for a feature meant to show who is listening to music
+*right now*. Any friend who listened at any point in the last 24 hours —
+including late the previous evening — is shown as currently listening,
+which is exactly the "shows people from yesterday" behavior reported.
+The comparison logic itself (`listened_at >= cutoff`) was correct; the
+threshold value it was being compared against was set too high for the
+feature's intent.
 
 **My fix and side-effect check:**
 
-TODO
+I changed `RECENT_THRESHOLD` from `timedelta(hours=24)` to
+`timedelta(minutes=30)`. After the fix, re-running the same reproduction
+across all 5 seeded users returned an empty feed for everyone, since all
+seeded listening events were now older than 30 minutes — confirming
+stale events no longer appear. To verify the feed still works for
+genuinely recent activity, I created a new `ListeningEvent` timestamped
+at the current moment for `nova`, a friend of `kenji`, and re-queried:
+`nova` correctly appeared in `kenji`'s "listening now" feed. I also
+checked `get_activity_feed()`, which does not use `RECENT_THRESHOLD` at
+all, so this change has no effect on the general activity feed.
 
 ---
 
