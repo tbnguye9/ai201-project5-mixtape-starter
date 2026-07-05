@@ -2,11 +2,39 @@
 
 ## AI Usage
 
-<!-- Fill this in at the end (Milestone 4). Be specific: what you asked,
-what the AI helped explain/trace, and at least one place where you had
-to verify or correct something the AI said. -->
+I used AI throughout this project primarily for code navigation, tracing
+execution flow, and verifying hypotheses about root causes — not for
+generating fixes directly.
 
-TODO
+- For codebase orientation, I shared each service file and asked the AI
+  to summarize what it was responsible for and trace how a song added
+  to a playlist triggers a notification, which became the data flow
+  example in my codebase map.
+- For Issue #1, the AI helped me manually trace how `today.weekday()`
+  evaluates on a Sunday and why that made the `elif` condition false,
+  after I had already identified the suspicious line myself.
+- For Issue #2, the AI's first hypothesis (a timezone string-format
+  mismatch between SQLite storage and the `cutoff` value) turned out to
+  be a dead end — I tested it directly with compiled SQL and boundary
+  cases and disproved it myself. This led us back to re-reading
+  `seed_data.py`, where a comment revealed the actual root cause was
+  the `RECENT_THRESHOLD` value being too large, not the comparison logic.
+- For Issue #3 (duplicate songs in search), the AI's initial hypothesis
+  about SQLAlchemy JOIN duplication was tested extensively (via shell,
+  HTTP requests, and the repo's own pytest suite) but never reproduced —
+  all 5 existing tests passed, including the one specifically checking
+  for this bug. We documented this as an unreproducible case and moved
+  to Issue #5 instead of forcing a fix for a bug that didn't manifest.
+- For Issue #5, I identified the suspicious `songs[:-1]` slice myself by
+  reading `playlist_service.py`; the AI helped me design the isolated
+  single-song-playlist test that confirmed the bug's most extreme case
+  (an empty return for a playlist with just one song).
+
+Overall, the AI was most useful for structuring reproduction tests and
+explaining Python/SQLAlchemy behavior I was unsure about, but several of
+its initial hypotheses (Issue #2's timezone theory, Issue #3's JOIN
+theory) were wrong and required me to verify with actual test output
+before accepting or rejecting them.
 
 ---
 
@@ -260,3 +288,7 @@ returned. To check the edge case, I created a playlist with exactly one
 song and confirmed `get_playlist_songs()` now correctly returns that one
 song instead of an empty list, which is the most extreme manifestation
 of this bug and the clearest possible regression check.
+
+## Commit History
+
+![git log showing 3 fix commits](screenshots/git-log-commits.png)
