@@ -242,6 +242,57 @@ all, so this change has no effect on the general activity feed.
 
 ---
 
+### Issue #4: I got notified when a friend added my song to a playlist but not when they rated it
+
+**How I reproduced it:**
+
+Using `flask shell`, I recorded the notification count for a song's
+sharer, then called `rate_song()` as a different user, then checked the
+notification count again. Before rating, the sharer had 1 notification;
+after a friend rated their song, the count stayed at 1 with no new
+notification created — confirming the reported behavior that rating a
+song produces no notification, unlike adding a song to a playlist.
+
+**How I found the root cause:**
+
+I compared `add_to_playlist()` and `rate_song()` in
+`notification_service.py` line by line, since both functions live in the
+same file and the working notification pattern (`add_to_playlist`) was
+right next to the broken one. `add_to_playlist()` ends with a check
+(`if song.shared_by != added_by_user_id`) followed by a call to
+`create_notification()`. `rate_song()` performs its core logic — saving
+or updating a `Rating` — and commits, but has no equivalent block at all;
+it returns the rating object directly with no notification step. This
+confirmed the root cause was a missing block of logic, not a
+misconfigured condition.
+
+**The root cause:**
+
+`rate_song()` never calls `create_notification()` anywhere in its body.
+Unlike `add_to_playlist()`, which notifies the song's original sharer
+after performing its main action, `rate_song()` saves the `Rating` and
+returns without any equivalent notification step. This is an
+architectural omission — the function is simply missing a step that its
+sibling function in the same file already implements correctly.
+
+**My fix and side-effect check:**
+
+I added a notification block at the end of `rate_song()`, mirroring the
+pattern used in `add_to_playlist()`: after the rating is saved and
+committed, if `song.shared_by != user_id`, a `song_rated` notification
+is created for the sharer. I re-ran the reproduction and confirmed the
+sharer's notification count increased from 1 to 2 after a friend rated
+their song, with the correct `song_rated` type and a message naming the
+rater, song, and score.
+
+To check for side effects, I tested the case where a user rates their
+own song (`song.shared_by == user_id`). Before and after this self-rate,
+the notification count stayed the same, confirming the `!=` check
+correctly prevents a user from being notified about their own rating —
+matching the same guard already used in `add_to_playlist()`. I also
+re-ran the full `pytest tests/` suite to confirm no existing tests broke.
+---
+
 ### Issue #5: The last song in a playlist never shows up
 
 **How I reproduced it:**
