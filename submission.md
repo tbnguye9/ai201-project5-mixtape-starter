@@ -158,7 +158,6 @@ This is why a user listening on consecutive days, where one of those
 days happens to be a Sunday, sees their streak reset instead of
 increment.
 
-**My fix and side-effect check:**
 
 **My fix and side-effect check:**
 
@@ -291,6 +290,16 @@ the notification count stayed the same, confirming the `!=` check
 correctly prevents a user from being notified about their own rating —
 matching the same guard already used in `add_to_playlist()`. I also
 re-ran the full `pytest tests/` suite to confirm no existing tests broke.
+
+**Regression test:**
+
+Added `tests/test_notifications.py` with two tests:
+`test_rating_a_song_notifies_the_sharer` confirms a `song_rated`
+notification is created when a different user rates a song, and
+`test_rating_your_own_song_does_not_notify_yourself` confirms no
+notification is created when a user rates their own shared song. Both
+tests would have failed against the original code, since `rate_song()`
+never called `create_notification()`.
 
 ---
 
