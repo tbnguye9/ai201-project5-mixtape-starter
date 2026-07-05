@@ -291,6 +291,7 @@ the notification count stayed the same, confirming the `!=` check
 correctly prevents a user from being notified about their own rating —
 matching the same guard already used in `add_to_playlist()`. I also
 re-ran the full `pytest tests/` suite to confirm no existing tests broke.
+
 ---
 
 ### Issue #5: The last song in a playlist never shows up
