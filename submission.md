@@ -214,20 +214,49 @@ all, so this change has no effect on the general activity feed.
 
 ---
 
-### Issue #3: The same song keeps showing up twice in search
+### Issue #5: The last song in a playlist never shows up
 
 **How I reproduced it:**
 
-TODO — fill in after running the `flask shell` steps for search_service.
+Using `flask shell`, I compared the raw row count in the `playlist_entries`
+table against the output of `get_playlist_songs()` for the "Late Night
+Vibes" playlist. The table had exactly 7 entries (positions 1–7), but
+`get_playlist_songs()` returned only 6 songs, missing the song at
+position 7 ("Free Throws"). I confirmed this wasn't specific to that
+playlist by also testing a playlist with only 1 song, which returned
+zero songs — the most extreme case of the same bug.
 
 **How I found the root cause:**
 
-TODO
+I compared the row count from a direct SQL query against
+`playlist_service.py`. The function queries and orders songs correctly
+by `position`, but the final return statement was
+`return [song.to_dict() for song in songs[:-1]]`. Since `songs` is
+already sorted ascending by position, `songs[:-1]` (Python slicing that
+excludes the last element) always drops the song with the highest
+position — the last song in the playlist. This directly contradicted the
+function's own docstring, which states "This function returns all songs
+in the playlist," confirming this line was the exact cause rather than
+an issue in the query or ordering logic.
 
 **The root cause:**
 
-TODO
+The line `return [song.to_dict() for song in songs[:-1]]` in
+`get_playlist_songs()` uses Python's slice notation `[:-1]`, which
+returns all elements except the last one. Because `songs` is ordered
+ascending by `position`, the last element in the list is always the
+song with the highest position value — i.e., the last song a user added
+to the playlist. This slice silently drops that song from every playlist
+response, regardless of playlist length; for a playlist with only one
+song, it drops the only song, returning an empty list.
 
 **My fix and side-effect check:**
 
-TODO
+I changed the return statement to `return [song.to_dict() for song in songs]`,
+removing the incorrect slice so all songs are returned. I re-ran the
+original reproduction on "Late Night Vibes" and confirmed all 7 songs,
+including the previously missing "Free Throws" at position 7, are now
+returned. To check the edge case, I created a playlist with exactly one
+song and confirmed `get_playlist_songs()` now correctly returns that one
+song instead of an empty list, which is the most extreme manifestation
+of this bug and the clearest possible regression check.
